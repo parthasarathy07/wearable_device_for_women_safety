@@ -106,13 +106,25 @@ void handleClientConnection() {
         msg.trim();
         Serial.print("Received: ");
         Serial.println(msg);
-
+        String meta_msg="This is an emergency alert. Please check on the user immediately. ";
         if (msg == "1") {
-          sendSMSWithLocation("emergency button is clicked");
+
+          String emergencyMessage ="emergency button is clicked";
+          sendSMSWithLocation(emergencyMessage);
+          makeCallAndPlayVoiceMessage(meta_msg + emergencyMessage, 30000);
+
         } else if (msg == "2") {
-          sendSMSWithLocation("emergency pulse is abnormal");
+
+          String emergencyMessage ="emergency pulse is abnormal";
+          sendSMSWithLocation(emergencyMessage);
+          makeCallAndPlayVoiceMessage(meta_msg + emergencyMessage, 30000);
+
         } else if (msg == "3") {
-          sendSMSWithLocation("vibration detected");
+
+          String emergencyMessage ="vibration detected";
+          sendSMSWithLocation(emergencyMessage);
+          makeCallAndPlayVoiceMessage(meta_msg + emergencyMessage, 30000);
+
         } else {
           Serial.println("Unknown command received.");
         }
@@ -122,6 +134,58 @@ void handleClientConnection() {
     client.stop();
     Serial.println("Client Disconnected.");
   }
+}
+
+void makeCallAndPlayVoiceMessage(const String& voiceMessage, unsigned int ringTimeout) {
+  Serial.print("Attempting to call: ");
+  Serial.println(SMS_TARGET);
+
+  if (!modem.callNumber(SMS_TARGET)) {
+    Serial.println("Failed to initiate the call.");
+    return;
+  }
+
+  Serial.println("Call initiated, waiting for answer...");
+
+  bool callAnswered = false;
+  unsigned long startTime = millis();
+  while (millis() - startTime < ringTimeout) {
+    // AT+CLCC checks the status of the current call. A '0' in the 3rd parameter means the call is active.
+    modem.sendAT("+CLCC");
+    if (modem.waitResponse(",0,") > 0) {
+      Serial.println("Call was answered!");
+      callAnswered = true;
+      break;
+    }
+    delay(1000);
+  }
+
+  // 3. If the call was answered, play the voice message
+  if (callAnswered) {
+    Serial.println("Playing voice message...");
+
+    // Enable Text-to-Speech mode on the modem
+    modem.sendAT("+CTTS=1");
+    modem.waitResponse();
+
+    // Construct the AT command to play the message
+    String ttsCommand = "AT+CTTS=2,\"" + voiceMessage + "\"";
+    modem.sendAT(ttsCommand.c_str());
+    modem.waitResponse();
+
+    // Wait for the message to finish playing. This is an estimate.
+    // (e.g., 4 seconds base + 150ms per character)
+    delay(4000 + voiceMessage.length() * 150);
+
+    Serial.println("Message finished playing.");
+
+  } else {
+    Serial.println("Call was not answered within the timeout period.");
+  }
+
+  // 4. Hang up the call
+  Serial.println("Hanging up the call.");
+  modem.callHangup();
 }
 
 void sendSMSWithLocation(const String& msg) {
