@@ -28,6 +28,12 @@ const char gprsPass[] = "";
 const char* defaultlatitude = "10.655458650783398";
 const char* defaultlongitude = "77.0361596345481";
 
+struct GPSData {
+  String latitude;
+  String longitude;
+  bool valid;
+};
+
 void setup() {
   Serial.begin(115200);
   setupWiFiAP();
@@ -119,22 +125,21 @@ void handleClientConnection() {
 }
 
 void sendSMSWithLocation(const String& msg) {
-  String latitude, longitude;
-  if (!getGPSCoordinates(latitude, longitude)) {
-    Serial.print("GPS found: ");
-    latitude = defaultlatitude;
-    longitude = defaultlongitude;
-    Serial.print(latitude);
-    Serial.print(", ");
-    Serial.println(longitude);
+  GPSData gps = getGPSCoordinates();
+
+  if (!gps.valid) {
+    Serial.print("GPS not found, using default coordinates: ");
+    gps.latitude = defaultlatitude;
+    gps.longitude = defaultlongitude;
   } else {
     Serial.print("GPS found: ");
-    Serial.print(latitude);
-    Serial.print(", ");
-    Serial.println(longitude);
   }
 
-  String gmapLink = "https://maps.google.com/?q=" + latitude + "," + longitude;
+  Serial.print(gps.latitude);
+  Serial.print(", ");
+  Serial.println(gps.longitude);
+
+  String gmapLink = "https://maps.google.com/?q=" + gps.latitude + "," + gps.longitude;
   String smsText = msg + "\nLocation: " + gmapLink;
 
   Serial.print("Sending SMS: ");
@@ -147,7 +152,9 @@ void sendSMSWithLocation(const String& msg) {
   }
 }
 
-bool getGPSCoordinates(String &lat, String &lon) {
+GPSData getGPSCoordinates(String &lat, String &lon) {
+  GPSData gps;
+  gps.valid = false;
   modem.sendAT("+CGPS=1,1"); // Power on GNSS
   delay(2000);
   modem.sendAT("+CGPSINFO");
@@ -159,11 +166,14 @@ bool getGPSCoordinates(String &lat, String &lon) {
     if (data.length() > 10 && data.indexOf(",") > 0) {
       int comma1 = data.indexOf(",");
       int comma2 = data.indexOf(",", comma1 + 1);
-      lat = data.substring(0, comma1);
-      lon = data.substring(comma1 + 1, comma2);
-      if (lat.length() > 0 && lon.length() > 0 && lat != "0.0" && lon != "0.0")
-        return true;
+      gps.latitude = data.substring(0, comma1);
+      gps.longitude = data.substring(comma1 + 1, comma2);
+
+      if (gps.latitude.length() > 0 && gps.longitude.length() > 0 &&
+          gps.latitude != "0.0" && gps.longitude != "0.0") {
+        gps.valid = true;
+      }
     }
   }
-  return false;
+  return gps;
 }
